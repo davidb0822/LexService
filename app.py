@@ -68,13 +68,20 @@ def webhook():
     )
 
     # Dacă MP răspunde cu eroare, o trimitem ca debug
-    if response.status_code not in (200, 201):
+        if response.status_code not in (200, 201):
+        print("=== MERCHANTPRO ERROR ===")
+        print("Status:", response.status_code)
+        print("Response text:", response.text)
+        print("Payload sent:", payload)
+        print("==========================")
+        
         return jsonify({
             "error": "MerchantPro API error",
-            "mp_status_code": response.status_code,
+            "mp_status": response.status_code,
             "mp_response": response.text,
-            "sent_payload": payload
+            "payload": payload
         }), 500
+
 
     # Succes
     return jsonify({
