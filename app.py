@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify
 import requests
 import os
+import re
+import unicodedata
 
 app = Flask(__name__)
 
@@ -14,6 +16,28 @@ MERCHANTPRO_BASE = os.environ.get("MP_BASE")
 MERCHANTPRO_ENDPOINT = os.environ.get("MP_ENDPOINT")  # ex: /api/v2/articles
 
 BLOG_CATEGORY_ID = 4  # schimbă dacă ai altă categorie
+
+# -------------------------------------------------------
+# Slug generator (fara diacritice, fara caractere speciale)
+# -------------------------------------------------------
+def generate_slug(text):
+    if not text:
+        return "articol"
+    
+    # 1. normalize unicode → ASCII
+    text = unicodedata.normalize('NFKD', text)
+    text = text.encode('ascii', 'ignore').decode('ascii')
+
+    # 2. lowercase
+    text = text.lower()
+
+    # 3. înlocuiește caracterele nepermise cu "-"
+    text = re.sub(r'[^a-z0-9]+', '-', text)
+
+    # 4. elimină '-' de la început/sfârșit
+    text = text.strip('-')
+
+    return text
 
 # -------------------------------------------------------
 # Home route (health check)
@@ -35,20 +59,24 @@ def webhook():
 
     data = request.json
 
+    title = data.get("title", "")
+    content_html = data.get("content_html", "")
+    meta_desc = data.get("metaDescription", "")
+
     # Construim SLUG corect
-    slug = (data.get("title") or "").lower().strip().replace(" ", "-")
+    slug = generate_slug(title)
 
     # Construim payload exact pentru MerchantPro
     payload = {
-        "title": data.get("title"),
-        "content": data.get("content_html"),  # BABYLOVE trimite doar content_html
+        "title": title,
+        "content": content_html,
         "category_id": BLOG_CATEGORY_ID,
 
         # SEO
-        "meta_title": data.get("title"),
-        "meta_description": data.get("metaDescription", ""),
+        "meta_title": title,
+        "meta_description": meta_desc,
 
-        # Slug
+        # Slug curat
         "slug": slug,
 
         # Tags goale (MerchantPro cere array)
