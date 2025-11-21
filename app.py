@@ -11,10 +11,10 @@ BABYLOVE_TOKEN = os.environ.get("BABYLOVE_TOKEN")
 MERCHANTPRO_API_USER = os.environ.get("MP_USER")
 MERCHANTPRO_API_PASSWORD = os.environ.get("MP_PASSWORD")
 MERCHANTPRO_BASE = os.environ.get("MP_BASE")
-MERCHANTPRO_ENDPOINT = os.environ.get("MP_ENDPOINT")  # /api/v2/articles
+MERCHANTPRO_ENDPOINT = os.environ.get("MP_ENDPOINT")  # ex: /api/v2/articles
 
 # -------------------------------------------------------
-# Home route
+# Home route (health check)
 # -------------------------------------------------------
 @app.route("/")
 def home():
@@ -32,11 +32,8 @@ def webhook():
 
     data = request.json
 
-    # ---------------------------------------------------
-    # IMPORTANT: category_id TREBUIE să fie valid în MP
-    # ---------------------------------------------------
-    # Pune aici ID-ul categoriei tale de blog din MerchantPro
-    BLOG_CATEGORY_ID = 4  # <-- modifică cu ID-ul tău real
+    # ID-ul categoriei de blog din MerchantPro
+    BLOG_CATEGORY_ID = 4  # modifică cu ID-ul real
 
     payload = {
         "title": data.get("title"),
@@ -61,28 +58,26 @@ def webhook():
     url = MERCHANTPRO_BASE.rstrip("/") + MERCHANTPRO_ENDPOINT
 
     # Request către MerchantPro
-       # Request către MerchantPro
     response = requests.post(
         url,
         json=payload,
         auth=(MERCHANTPRO_API_USER, MERCHANTPRO_API_PASSWORD)
     )
 
-    # Dacă MP răspunde cu eroare, o trimitem ca debug
-        if response.status_code not in (200, 201):
+    # Dacă răspunsul NU este OK → log + return 500
+    if response.status_code not in (200, 201):
         print("=== MERCHANTPRO ERROR ===")
         print("Status:", response.status_code)
         print("Response text:", response.text)
         print("Payload sent:", payload)
         print("==========================")
-        
+
         return jsonify({
             "error": "MerchantPro API error",
             "mp_status": response.status_code,
             "mp_response": response.text,
             "payload": payload
         }), 500
-
 
     # Succes
     return jsonify({
