@@ -13,6 +13,8 @@ MERCHANTPRO_API_PASSWORD = os.environ.get("MP_PASSWORD")
 MERCHANTPRO_BASE = os.environ.get("MP_BASE")
 MERCHANTPRO_ENDPOINT = os.environ.get("MP_ENDPOINT")  # ex: /api/v2/articles
 
+BLOG_CATEGORY_ID = 4  # schimbă dacă ai altă categorie
+
 # -------------------------------------------------------
 # Home route (health check)
 # -------------------------------------------------------
@@ -25,6 +27,7 @@ def home():
 # -------------------------------------------------------
 @app.route("/webhook", methods=["POST"])
 def webhook():
+
     # Validate token
     auth_header = request.headers.get("Authorization", "")
     if auth_header != f"Bearer {BABYLOVE_TOKEN}":
@@ -32,29 +35,30 @@ def webhook():
 
     data = request.json
 
-    # ID-ul categoriei de blog din MerchantPro
-    BLOG_CATEGORY_ID = 4  # modifică cu ID-ul real
+    # Construim SLUG corect
+    slug = (data.get("title") or "").lower().strip().replace(" ", "-")
 
+    # Construim payload exact pentru MerchantPro
     payload = {
         "title": data.get("title"),
-        "content": data.get("content_html") or data.get("content"),
+        "content": data.get("content_html"),  # BABYLOVE trimite doar content_html
         "category_id": BLOG_CATEGORY_ID,
 
         # SEO
         "meta_title": data.get("title"),
-        "meta_description": data.get("meta_description", ""),
+        "meta_description": data.get("metaDescription", ""),
 
         # Slug
-        "slug": data.get("slug") or data.get("title").replace(" ", "-").lower(),
+        "slug": slug,
 
-        # Tags
-        "tags": data.get("tags") or [],
+        # Tags goale (MerchantPro cere array)
+        "tags": [],
 
-        # Status
+        # Activăm articolul
         "status": "active"
     }
 
-    # URL final
+    # URL MerchantPro
     url = MERCHANTPRO_BASE.rstrip("/") + MERCHANTPRO_ENDPOINT
 
     # Request către MerchantPro
@@ -64,7 +68,7 @@ def webhook():
         auth=(MERCHANTPRO_API_USER, MERCHANTPRO_API_PASSWORD)
     )
 
-    # Dacă răspunsul NU este OK → log + return 500
+    # Dacă răspunsul nu este OK
     if response.status_code not in (200, 201):
         print("=== MERCHANTPRO ERROR ===")
         print("Status:", response.status_code)
