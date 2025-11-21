@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: babylove-merchantpro
+    env: python
+    region: frankfurt
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app"
+    envVars:
+      - key: BABYLOVE_TOKEN
+        sync: false
+      - key: MP_USER
+        sync: false
+      - key: MP_PASSWORD
+        sync: false
+      - key: MP_BASE
+        sync: false
+      - key: MP_ENDPOINT
+        sync: false
