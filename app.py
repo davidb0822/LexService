@@ -1,23 +1,69 @@
 from flask import Flask, request, jsonify
 import requests
 import os
+import threading
 
 app = Flask(__name__)
 
 # -------------------------------------------------------
-# Config din variabile de mediu
+# Config din Render -> Environment Variables
 # -------------------------------------------------------
-BABYLOVE_TOKEN = os.environ.get("BABYLOVE_TOKEN")  # webhook secret
+BABYLOVE_TOKEN = os.environ.get("BABYLOVE_TOKEN")
 MERCHANTPRO_API_USER = os.environ.get("MP_USER")
 MERCHANTPRO_API_PASSWORD = os.environ.get("MP_PASSWORD")
-MERCHANTPRO_BASE = os.environ.get("MP_BASE")  # ex: https://lexservice.ro
-MERCHANTPRO_ENDPOINT = os.environ.get("MP_ENDPOINT")  # ex: /api/v2/articles
+MERCHANTPRO_BASE = os.environ.get("MP_BASE")
+MERCHANTPRO_ENDPOINT = os.environ.get("MP_ENDPOINT")
 
-BLOG_CATEGORY_ID = 4  # categoria blogului din MerchantPro
+BLOG_CATEGORY_ID = 4  # modifică dacă e alt ID la tine
 
 
 # -------------------------------------------------------
-# Health check
+# Funcția care procesează în background
+# -------------------------------------------------------
+def process_webhook(data):
+    try:
+        print("=== Webhook received, processing in background ===")
+
+        slug = data.get("slug") or ""
+
+        payload = {
+            "title": data.get("title"),
+            "content": data.get("content_html"),
+            "category_id": BLOG_CATEGORY_ID,
+            "meta_title": data.get("title"),
+            "meta_description": data.get("metaDescription", ""),
+            "slug": slug,
+            "tags": [],
+            "status": "active"
+        }
+
+        url = MERCHANTPRO_BASE.rstrip("/") + MERCHANTPRO_ENDPOINT
+
+        print("Payload for MerchantPro:", payload)
+
+        response = requests.post(
+            url,
+            json=payload,
+            auth=(MERCHANTPRO_API_USER, MERCHANTPRO_API_PASSWORD)
+        )
+
+        if response.status_code not in (200, 201):
+            print("=== MERCHANTPRO ERROR ===")
+            print("Status:", response.status_code)
+            print("Response:", response.text)
+            print("=========================")
+        else:
+            print("=== Article successfully created in MerchantPro ===")
+            print(response.json())
+
+    except Exception as e:
+        print("=== EXCEPTION IN BACKGROUND ===")
+        print(str(e))
+        print("===============================")
+
+
+# -------------------------------------------------------
+# Home — health check
 # -------------------------------------------------------
 @app.route("/")
 def home():
@@ -25,68 +71,30 @@ def home():
 
 
 # -------------------------------------------------------
-# Webhook BabyLoveGrowth → MerchantPro
+# Webhook — răspundem instant, procesăm după
 # -------------------------------------------------------
 @app.route("/webhook", methods=["POST"])
 def webhook():
 
-    # 1. SECURITY CHECK
+    # verificăm Bearer Token
     auth_header = request.headers.get("Authorization", "")
     if auth_header != f"Bearer {BABYLOVE_TOKEN}":
         return jsonify({"error": "Unauthorized"}), 401
 
-    data = request.json or {}
+    data = request.json
 
-    # 2. Folosim SLUG trimis de BabyLoveGrowth
-    slug = data.get("slug") or ""
+    # răspuns instant → BabyLove primește 200 imediat
+    response = jsonify({"status": "received"})
+    response.status_code = 200
 
-    # 3. Content HTML
-    content_html = data.get("content_html") or ""
+    # procesăm în background
+    threading.Thread(target=process_webhook, args=(data,)).start()
 
-    # 4. Trimitem către MerchantPro
-    payload = {
-        "title": data.get("title"),
-        "content": content_html,
-        "category_id": BLOG_CATEGORY_ID,
+    return response
 
-        # SEO
-        "meta_title": data.get("title"),
-        "meta_description": data.get("metaDescription", ""),
 
-        # SLUG FINAL
-        "slug": slug,
-
-        # MerchantPro cere array
-        "tags": [],
-
-        # Publicat
-        "status": "active",
-    }
-
-    url = MERCHANTPRO_BASE.rstrip("/") + MERCHANTPRO_ENDPOINT
-
-    response = requests.post(
-        url,
-        json=payload,
-        auth=(MERCHANTPRO_API_USER, MERCHANTPRO_API_PASSWORD)
-    )
-
-    # 5. Error logging
-    if response.status_code not in (200, 201):
-        print("=== MERCHANTPRO ERROR ===")
-        print("Status:", response.status_code)
-        print("Response text:", response.text)
-        print("Payload:", payload)
-        print("==========================")
-
-        return jsonify({
-            "error": "MerchantPro API error",
-            "mp_status": response.status_code,
-            "mp_response": response.text
-        }), 500
-
-    # 6. Succes
-    return jsonify({
-        "status": "ok",
-        "merchantpro_response": response.json()
-    })
+# -------------------------------------------------------
+# Run local (optional)
+# -------------------------------------------------------
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
