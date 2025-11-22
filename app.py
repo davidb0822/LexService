@@ -1,8 +1,6 @@
 from flask import Flask, request, jsonify
 import requests
 import os
-import re
-import unicodedata
 
 app = Flask(__name__)
 
@@ -18,28 +16,6 @@ MERCHANTPRO_ENDPOINT = os.environ.get("MP_ENDPOINT")  # ex: /api/v2/articles
 BLOG_CATEGORY_ID = 4  # schimbă dacă ai altă categorie
 
 # -------------------------------------------------------
-# Slug generator (fara diacritice, fara caractere speciale)
-# -------------------------------------------------------
-def generate_slug(text):
-    if not text:
-        return "articol"
-    
-    # 1. normalize unicode → ASCII
-    text = unicodedata.normalize('NFKD', text)
-    text = text.encode('ascii', 'ignore').decode('ascii')
-
-    # 2. lowercase
-    text = text.lower()
-
-    # 3. înlocuiește caracterele nepermise cu "-"
-    text = re.sub(r'[^a-z0-9]+', '-', text)
-
-    # 4. elimină '-' de la început/sfârșit
-    text = text.strip('-')
-
-    return text
-
-# -------------------------------------------------------
 # Home route (health check)
 # -------------------------------------------------------
 @app.route("/")
@@ -52,41 +28,40 @@ def home():
 @app.route("/webhook", methods=["POST"])
 def webhook():
 
-    # Validate token
+    # Validate Babylove token
     auth_header = request.headers.get("Authorization", "")
     if auth_header != f"Bearer {BABYLOVE_TOKEN}":
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.json
 
-    title = data.get("title", "")
-    content_html = data.get("content_html", "")
-    meta_desc = data.get("metaDescription", "")
+    # Folosim slug EXACT cum îl trimite Babylove
+    slug = data.get("slug") or ""
 
-    # Construim SLUG corect
-    slug = generate_slug(title)
+    # Content HTML generat de Babylove
+    content_html = data.get("content_html") or ""
 
     # Construim payload exact pentru MerchantPro
     payload = {
-        "title": title,
+        "title": data.get("title"),
         "content": content_html,
         "category_id": BLOG_CATEGORY_ID,
 
         # SEO
-        "meta_title": title,
-        "meta_description": meta_desc,
+        "meta_title": data.get("title"),
+        "meta_description": data.get("metaDescription", ""),
 
-        # Slug curat
+        # Slug direct din Babylove
         "slug": slug,
 
-        # Tags goale (MerchantPro cere array)
+        # MerchantPro cere array pentru tags
         "tags": [],
 
         # Activăm articolul
         "status": "active"
     }
 
-    # URL MerchantPro
+    # URL final MP
     url = MERCHANTPRO_BASE.rstrip("/") + MERCHANTPRO_ENDPOINT
 
     # Request către MerchantPro
@@ -96,9 +71,10 @@ def webhook():
         auth=(MERCHANTPRO_API_USER, MERCHANTPRO_API_PASSWORD)
     )
 
-    # Dacă răspunsul nu este OK
+    # Dacă MP răspunde cu eroare → logăm tot
     if response.status_code not in (200, 201):
         print("=== MERCHANTPRO ERROR ===")
+        print("URL:", url)
         print("Status:", response.status_code)
         print("Response text:", response.text)
         print("Payload sent:", payload)
